@@ -1,0 +1,271 @@
+---
+title: "Analyze UK preferences for fridge freezers to optimize product pricing"
+author: "Yue Wu (270012)"
+date: "08.02.2023"
+output:
+  html_document:
+    number_sections: yes
+    theme: united
+    toc: yes
+    toc_float: yes
+    dev: svg
+    highlight: haddock
+---
+
+```{r setup, include=FALSE}
+library(knitr)
+opts_chunk$set(echo = TRUE, 
+               cache = FALSE,
+               prompt = FALSE,
+               tidy = TRUE,
+               comment = NA,
+               message = FALSE,
+               warning = FALSE,
+               fig.width = 7.4,
+               fig.height = 4.7,
+               fig.align = "center")
+opts_knit$set(width = 75)
+```
+
+<style> 
+
+tr {font-family: 'Fira Mono'; font-size:90%}
+code, kbd,pre,samp {font-family: 'Fira Mono';
+                    background-color: rgba(237, 125, 49, 0.04)}
+body, h1, h2, h3, h4, h5 {font-family: 'Fira Sans'}
+
+</style>
+
+# Project introduction
+
+The fridge-freezers market is highly competitive and constantly evolving, with new products and features being introduced regularly. Understanding the preferences and needs of consumers is essential for products to remain competitive and profitable. The aim of this project is to analyze the preferences of consumers in UK for fridge-freezers in order to optimize product pricing.
+
+We will scrape fridge-freezers data from Boots which is a popular home appliance mall in the UK to gather information about consumer preferences, such as their preferred features, brands, and prices. The information will be processed based on R studio and analyzed with statistical methods and visualizations to identify trends and patterns in consumer behavior. 
+
+The results of this project will provide valuable information for companies in the fridge-freezer industry, and can be used to inform product development and pricing decisions, helping them stay ahead of the competition and meet the evolving needs of consumers in UK market.
+
+# Project research and analysis
+## Project dataset 
+```{r}
+library(tidyverse)
+library(stringi)
+library(rvest)
+library(ggplot2)
+library(gridExtra)
+df_data <- read_csv("preprocessed_data.csv")
+df_data <- df_data[, -which(names(df_data) == "...1")]
+kable(head(df_data)[,1:10])
+```
+We crawled fridge-freezers data from the Boots shopping website in the UK. In this report, the imported data has been pre-processed, including rating, price and product parameters, part of datasets are shown in the table above, the processed dataset has a total of `r nrow(df_data)` fridge-freezer products and `r ncol(df_data)` fields.
+
+## Project software
+All the implementation of this project is completed based on R studio, which is mainly divided into the following steps.
+
+- Data crawling (R file)
+- Core data pre-cleaning (R file)
+- Implement data research and analysis based on project goals (.Rmd file)
+
+## Project data analysis
+### Brand category analysis
+```{r}
+df_data$brand <- stri_trans_toupper(df_data$brand) 
+brand_df <- df_data$brand %>%
+  table() %>%
+  as.data.frame() 
+names(brand_df) <- c("brand","quantity")
+brand_df <- brand_df[order(brand_df$quantity, decreasing = TRUE), ]
+category_perc <- round(brand_df$quantity/sum(brand_df$quantity) * 100, 1)
+brand_df <- cbind(brand_df,category_perc)   
+label_value <-stri_paste('(', category_perc, '%)', sep = '')
+brand_df %>% ggplot(aes(x = reorder(brand, quantity))) +
+  geom_bar(aes(y = quantity, fill = brand),stat = "identity")+
+  geom_text(aes(label = quantity, y = quantity)) + 
+  geom_text(aes(label = label_value, y = quantity + 3)) +
+  coord_flip() +
+  labs(title = "Brand Fridge Freezers Quantity Market Share In UK", x="Brand", y="Quantity & Market share") + 
+  theme(plot.title = element_text(hjust = 0.5, vjust = 1)) +
+  theme(legend.position = "none") +
+  theme(axis.text.x = element_blank(),
+        axis.ticks.x = element_blank()) + 
+  theme(panel.grid.major = element_blank(), 
+              panel.grid.minor = element_blank(),panel.background = element_blank(),
+              panel.border = element_blank())
+```
+As shown in the figure above, brands such as `r head(brand_df)[,1]` launched product quantity that account for a relatively high proportion of the market, the average number of categories produced by all brands is `r round(mean(brand_df$quantity),0)`.
+
+### Price distribution analysis
+```{r} 
+price_df <- data.frame(brand = df_data$brand, price = df_data$price)
+med <- price_df %>% group_by(brand) %>% mutate(med = median(price)) 
+gap1 <- round(nrow(price_df[price_df$price <= 1000,])/nrow(price_df),2)
+gap2 <- round(nrow(price_df[price_df$price <= 2000 & price_df$price > 1000,])/nrow(price_df),2)
+gap3 <- 1 - gap1 - gap2
+gap <- stri_paste('', c(gap1, gap2, gap3)*100,'%', sep = '')
+price_df %>% ggplot(aes(x = brand, y = price, colour = brand)) + 
+  geom_boxplot() +
+  coord_flip() +
+  labs(title = "Brand Price Distribution", x="Brand", y="Price(GBP)") + 
+  theme(plot.title = element_text(hjust = 0.5, vjust = 1)) +
+  theme(legend.position = "none") 
+```
+As shown in the figure above, the median price of most brands is within 1,000 GBP, the median price of different brands is between `r min(med$med)` and `r max(med$med)`. In addition, there are `r gap[1]` products in the market whose price is within 1,000 GBP, `r gap[2]` products are within 1,000-2,000 GBP, and only `r gap[3]` products exceed 2,000 GBP.
+
+### Product parameter analysis
+```{r}
+param <- df_data[,c(7,9:(ncol(df_data)-1))]
+param_name <- names(param) %>% stri_trans_totitle() %>% 
+  stri_replace_all(replacement = " ", fixed = "_", vectorize_all = FALSE, simplify = TRUE) %>% as.data.frame()
+na_test <- apply(param, 2, function(x) sum(is.na(x)))
+allpar_df <- param[na_test == 0] 
+all_name <- names(allpar_df) %>% stri_trans_totitle() %>%
+  stri_replace_all(replacement = " ", fixed = "_", vectorize_all = FALSE, simplify = TRUE) 
+all_name_sti <- all_name %>% stri_paste(collapse = ", ")
+param_info <- nrow(param) - na_test %>% as.data.frame()
+param_info <- cbind(param_name , param_info[,1])
+names(param_info) <- c("name","freq")
+param_info <- param_info %>% mutate(perc = round(freq/nrow(param)*100,2)) %>% arrange(desc(perc)) 
+label_value <- stri_paste(param_info$freq[1:50],'(', param_info$perc[1:50], '%)', sep = '')
+param_info[1:50,] %>% ggplot(aes(x = reorder(name,freq), y = freq)) + geom_col() +
+  labs(x="Paramter",y="The number of occurrences",title = "50 Most Marked Parameters On The Market") + 
+  theme(plot.title = element_text(hjust = 0.5, size = 15),
+       axis.text=element_text(size=6, face = "bold")) +
+  geom_col(fill = "#669933") +
+  geom_text(aes(label=label_value),size=2) + 
+  coord_flip() +
+  theme(panel.grid.major = element_blank(), 
+              panel.grid.minor = element_blank(),panel.background = element_blank(),
+              panel.border = element_blank())
+```
+Our data set has a total of `r ncol(param)` marked parameter items, the 50 most frequently marked parameters are shown in the figure above, and the marked parameters that all products provided are `r all_name_sti`.
+```{r}
+total_capacity <- allpar_df$total_capacity %>% stri_replace_all(replacement = "", fixed = "<u+00a0>", vectorize_all = FALSE, simplify = TRUE) %>% as.data.frame()
+names(total_capacity) <- "total_capacity"
+allpar_df[,"total_capacity"] <- total_capacity
+
+param_num <- apply(allpar_df[,c("dimensions","freezer_capacity_net","total_capacity","manufacturer_warranty")], 2, function(x) stri_extract_all(x, regex = "\\d+([.]\\d+)?", simplify = TRUE)) %>% as.data.frame()
+ 
+category_df <- allpar_df$category %>% table() %>% data.frame()
+names(category_df) <- c("category", "freq")
+category_df <- category_df  %>% mutate(percent =  round(freq / sum(freq)*100,2)) %>% arrange(desc(percent))
+category_str <- stri_paste(category_df[,1],'(', category_df[,3], '%)', collapse = ", ")
+
+colour_df <- allpar_df$colour %>% table() %>% as.data.frame() 
+names(colour_df) <- c("colour", "freq")
+colour_df <- colour_df %>% mutate(percent =  round(freq / sum(freq)*100,2)) %>% arrange(desc(percent)) 
+colour_str <- stri_paste(colour_df[1:5,1],'(', colour_df[1:5,3], '%)', collapse = ", ")
+
+country_df <- stri_trans_toupper(allpar_df$country_of_origin) %>% table() %>% as.data.frame() 
+names(country_df) <- c("country", "freq")
+country_df <- country_df %>% mutate(percent =  round(freq / sum(freq)*100,2)) %>% arrange(desc(percent))
+country_str <- stri_paste(country_df[,1],'(', country_df[,3], '%)', collapse = ", ")
+
+energy_df <- stri_trans_toupper(allpar_df$energy_rating) %>% table() %>% as.data.frame() 
+names(energy_df) <- c("energy_rating", "freq")
+energy_df <- energy_df %>% mutate(percent =  round(freq / sum(freq)*100,2)) %>% arrange(desc(percent)) 
+energy_str <- stri_paste(energy_df[,1],'(', energy_df[,3], '%)', collapse = ", ")
+
+manufacturer_warranty_df <- param_num[,6] %>% table() %>% as.data.frame()
+names(manufacturer_warranty_df) <- c("manufacturer_warranty", "freq")
+manufacturer_warranty_df <- manufacturer_warranty_df %>% mutate(percent =  round(freq / sum(freq)*100,2)) %>% arrange(desc(percent)) 
+warranty_str <- stri_paste(manufacturer_warranty_df[,1],'(', manufacturer_warranty_df[,3], '%)', collapse = ", ")
+
+frost_free_freezer_df <- allpar_df$frost_free_freezer %>% table() %>% as.data.frame() 
+names(frost_free_freezer_df) <- c("frost_free_freezer", "freq")
+frost_free_freezer_df <- frost_free_freezer_df %>% mutate(percent =  round(freq / sum(freq)*100,2)) %>% arrange(desc(percent)) 
+frost_str <- stri_paste(frost_free_freezer_df[,1],'(', frost_free_freezer_df[,3], '%)', collapse = ", ")
+
+dimen_df <- param_num[,1:3] %>% cbind(param$category) 
+names(dimen_df) <- c("height", "width", "depth","category") 
+group_dimen_df <-  dimen_df %>% group_by(category) %>% 
+  summarise(min_h= min(height), max_h = max(height),min_w= min(width), max_w = max(width),min_d= min(depth), max_d = max(depth))
+
+freezer_capacity_df <- param_num[,4] %>% cbind(param$category) %>% as.data.frame()
+names(freezer_capacity_df) <- c("freezer_capacity","category")
+freezer_capacity_df <- freezer_capacity_df %>% group_by(category) %>% summarise(min_fc= min(freezer_capacity), max_fc = max(freezer_capacity))
+
+total_capacity_df <- param_num[,5] %>% cbind(param$category) %>% as.data.frame()
+names(total_capacity_df) <- c("total_capacity", "category")
+total_capacity_df <- total_capacity_df %>% group_by(category) %>% summarise(min_tc= min(total_capacity), max_tc = max(total_capacity)) 
+```
+
+Then we mainly conduct parameter analysis around the parameters that all products have, and Sku is the code of the product and has no reference significance, so we will not analyze it here.  And category will be analyzed in combination with other parameters, the analysis results are as follows:
+
+- `r all_name[1]`: In the American fridge freezers category, the height of products is between `r group_dimen_df[1,2]`-`r group_dimen_df[1,3]` cm, the width is between `r group_dimen_df[1,4]`-`r group_dimen_df[1,5]` cm, and the depth is between `r group_dimen_df[1,6]`-`r group_dimen_df[1,7]` cm. In the fridge freezers category, the height of products is between `r group_dimen_df[2,3]`-`r group_dimen_df[2,2]` cm, the width is between `r group_dimen_df[2,4]`-`r group_dimen_df[2,5]` cm, and the depth is between `r group_dimen_df[2,6]`-`r group_dimen_df[2,7]` cm.
+
+- `r all_name[9]`: In the American fridge freezers category, the total capacity of products is between `r total_capacity_df[1,2]`-`r total_capacity_df[1,3]` liter. In the fridge freezers category, the total capacity of products is between `r total_capacity_df[2,3]`-`r total_capacity_df[2,2]` liter.
+
+- `r all_name[7]`: In the American fridge freezers category, the net freezer capacity of products is between `r freezer_capacity_df[1,2]`-`r freezer_capacity_df[1,3]` liter. In the fridge freezers category, the height of products is between `r freezer_capacity_df[2,3]`-`r freezer_capacity_df[2,2]` liter.
+
+- `r all_name[2]`: Among the colors used in all products, the five most commonly used color schemes are `r colour_str`.
+
+- `r all_name[3]`: There are two categories of fridge freezers in the UK market, and their proportions are `r category_str`.
+
+- `r all_name[5]`: The products on the market are basically manufactured in other countries, and the proportion of countries producing products from high to low is `r country_str`. 
+
+- `r all_name[6]`: The energy rating distribution of the product ranges from high to low: `r energy_str`.
+
+- `r all_name[8]`: For this function parameter, whether the product has this parameter distribution is as follows: `r frost_str`.
+
+- `r all_name[10]`: The manufacturer's warranty year proportion for the product from highest to lowest is `r warranty_str` year.
+
+### Rating analysis
+- This project selects target data is around the preference of UK customers for fridge-freezers, we combine customer ratings and the number of reviews as important fundamental metrics.
+- The scoring system of this shopping website is based on the fact that sellers will automatically give five points of praise if they do not post a comment, so we can simply seem the number of reviews as the number of purchased items(sales). 
+- We has filtered products with rating in the pre-processing stage.
+```{r}
+cor11 <- round(cor(df_data$rating, df_data$review_amount),2)
+rate_data <- df_data$rating %>% table() %>% data.frame() 
+names(rate_data) <- c("rate","freq")
+rate_data <- rate_data %>% mutate(percent = stri_paste(round(freq / sum(freq)*100,2),'%') ) 
+rate_data %>% ggplot(mapping = aes(x = rate, y = freq)) + 
+  geom_bar(stat = 'identity') + 
+  xlab("Rating") +
+  ylab("Rating freq") +
+  ggtitle("Rating Distribution") +
+  theme(plot.title = element_text(hjust = 0.5, vjust = 1)) +
+  geom_text(aes(label = percent, y = freq+1)) 
+```
+As shown in the figure above, most products have a rating of 4.4 or higher, and products with a rating of 4.8 account for the highest proportion. Moreover, after conducting a correlation test between rating and number of rating to each product, the correlation coefficient is `r cor11`, we can find that there is almost no correlation between them. 
+```{r}
+rate_df <- data.frame(brand = df_data$brand, rate = df_data$rating, number = df_data$review_amount)
+group <- rate_df %>% group_by(brand) %>% 
+  summarize(mean_rate = round(mean(rate),2), sum_number = sum(number), mean_number = round(mean(number),0)) %>%
+  arrange(desc(sum_number)) 
+group_rate <- left_join(group, brand_df[, c("brand","category_perc")], by = "brand")
+kable(group_rate %>% filter(sum_number > 1000))
+```
+As shown in the table above, this table combines these two rating indicators with the proportion of brands. Then we filter brands with total purchases greater than 1000, we can find that brands with a relatively high proportion of product quantity in the market also have ideal total purchases, average single product purchases and rating. 
+```{r}
+cor_value <- c(NA,NA,NA)
+for (i in 2:4){
+  cor_temp <- cor(group_rate[,i], group_rate[,5])
+  cor_value[i-1] <- round(cor_temp,2)
+}
+```
+Then we conduct a correlation test on these parameters which are the quantity proportion parameters of different brands, the average rating of the brand, the number of purchases and the average number of single product purchases, we can get the correlation coefficients as follows:`r cor_value[1]`, `r cor_value[2]`, `r cor_value[3]`, which indicates that there is a weak or moderate correlation between them.
+```{r}
+price_rate <- data.frame(rate = df_data$rating, number = df_data$review_amount, price = df_data$price)
+cor_pr1 <- round(cor(price_rate[,1], price_rate[,3]),2)
+cor_pr2 <- round(cor(price_rate[,2], price_rate[,3]),2)
+sc1 <-price_rate %>% ggplot(aes(x = rate, y = price)) +
+  geom_point() +
+  xlab("Rating") +
+  ylab("Price(GBP)") +
+  ggtitle("Relationship Between Rating and Price") +
+  theme(plot.title = element_text(hjust = 0.5, vjust = 1))
+sc2 <- price_rate %>% ggplot(aes(x = number, y = price)) +
+  geom_point() +
+  xlab("Sale") +
+  ylab("Price(GBP)") +
+  ggtitle("Relationship Between Sale and Price") +
+  theme(plot.title = element_text(hjust = 0.5, vjust = 1))
+grid.arrange(sc1, sc2, ncol = 2)
+```
+As shown in the figure above, rating seems to have no correlation with price, and the ratings of most products are between 4-5. In addition, there is a weak negative correlation between sale and price. The price of the products with the higher sales is concentrated within 1,000 GBP, followed by 1,000-2,000 GBP. As the price continues to rise, sale becomes very low. This may be related to the price-friendly positioning of the sites we crawl. In addition, the correlation coefficients of price, rating and sales are respectively:`r cor_pr1` and `r cor_pr2`, which is consistent with the trend of our previous analysis.
+
+# Project conclusion
+
+1. By studying the sales of different products, the more insured strategy is that the median of the main products should be controlled between 500 - 1000 GBP, and the price of high-end products should be 1000 - 2500 GBP.
+2. By increasing the market share of product quantity, it can increase sales and customer recognition to a certain extent.
+3. The company can configure products according to the high-frequency attributes that appear in the market to launch more products that meet market demand.
+
